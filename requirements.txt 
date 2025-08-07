@@ -1,0 +1,7 @@
+requests==2.32.4
+schedule==1.2.2
+slack-sdk==3.36.0
+uvicorn==0.35.0
+fastapi==0.116.1
+python-multipart==0.0.5
+python-dotenv==0.15.0

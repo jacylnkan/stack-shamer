@@ -11,16 +11,64 @@ log = logging.getLogger(__name__)
 
 client = WebClient(token=SLACK_TOKEN)
 
+
 def post_question_to_slack(question, escalation_level: int = 0, tag: str = None):
-    post_text = modify_post_by_escalation_level(question, escalation_level, tag)
+    blocks = modify_post_by_escalation_level(question, escalation_level, tag)
 
     try:
-        client.chat_postMessage(channel=CHANNEL_ID, text=post_text)
+        client.chat_postMessage(channel=CHANNEL_ID, blocks=blocks)
     except SlackApiError as e:
         log.error("Slack error:", e.response["error"])
 
+def generate_escalation_blocks(
+    header: str,
+    title: str,
+    link: str,
+    link_text: str,
+    additional_text: str = None
+) -> list[dict]:
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": header
+            }
+        },
+        {
+            "type": "divider"
+        }]
 
-def modify_post_by_escalation_level(question, escalation_level: int, tag: str = None) -> str:
+    if additional_text:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": additional_text
+            }
+        })
+
+    blocks += [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f">{title}"
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"🔗 <{link}|{link_text}>"
+            }
+        }
+    ]
+
+    return blocks
+
+
+def modify_post_by_escalation_level(question, escalation_level: int, tag: str = None) -> list[dict]:
     title = question["title"]
     link = question["link"]
 
@@ -33,13 +81,22 @@ def modify_post_by_escalation_level(question, escalation_level: int, tag: str = 
 
     # Friendly message on escalation level 0
     if escalation_level == 0:
-        post_text = (f"*New unanswered `{tag}` question!*\n🆕🆕🆕\n>{title}\n🔗 <{link}|Be a helpful developer and "
-                     f"answer it now!>")
+        blocks = generate_escalation_blocks(
+            header=f"🆕 NEW Unanswered {tag} Question",
+            title=title,
+            link=link,
+            link_text="Be a helpful developer and answer it now!"
+        )
 
     # More urgent message on escalation level 1
     elif escalation_level == 1:
-        post_text = (f"*URGENT!*\n🛎️🛎️🛎️\nNo one has answered this `{tag}` question yet...\n>{title}\n"
-                     f"🔗 <{link}|Don't let your team down and answer it now!>")
+        blocks = generate_escalation_blocks(
+            header=f"🛎️ URGENT! Question on {tag} needs your attention 🛎️",
+            title=title,
+            link=link,
+            link_text="Don't let your team down and answer it now!",
+            additional_text="This is your friendly reminder to answer this question before it escalates further!"
+        )
 
     # Tagging someone random on escalation level 2
     elif escalation_level == 2:
@@ -47,9 +104,14 @@ def modify_post_by_escalation_level(question, escalation_level: int, tag: str = 
         random_user = fetch_random_user_slack_id()
         insert_designated_answerer(id=question_id, slack_id=random_user)
 
-        post_text = (f"*IMPORTANT!!!*\n🚨🚨🚨\nBecause you all decided to ignore my previous posts, the gods have "
-                     f"picked... <@{random_user}> to answer this `{tag}` question!>\n{title}\n🔗 <{link}|Answer it now "
-                     f"or you'll regret it!>")
+        blocks = generate_escalation_blocks(
+            header=f"🚨 IMPORTANT! Time is running out for this question 🚨",
+            title=title,
+            link=link,
+            link_text="Answer it now or you'll regret it!",
+            additional_text=f"Because you all decided to ignore my previous posts, the gods have picked... "
+                            f"<@{random_user}> to answer this `{tag}` question!"
+        )
 
     # Tagging your manager on escalation level 3
     elif escalation_level == 3:
@@ -59,9 +121,13 @@ def modify_post_by_escalation_level(question, escalation_level: int, tag: str = 
 
         manager = fetch_user_manager(slack_id=designated_answerer_id)
 
-        post_text = (f"*YOU'RE IN TROUBLE!!!*\n🚓🚓🚓🚓🚓\nTagging your manager now since you can't seem to manage "
-                     f"your own responsibilities. <{manager}>, your employee <@{designated_answerer_id}> is slacking "
-                     f"off!!\n>{title}\n🔗 <{link}|Don't say I didn't warn you. Answer this `{tag}` question now.>")
+        blocks = generate_escalation_blocks(
+            header=f"⚡🚓⚡ YOU'RE IN TROUBLE! Question is still unanswered ⚡🚓⚡",
+            title=title,
+            link=link,
+            link_text="Don't say I didn't warn you... answer this question ASAP!",
+            additional_text=f"<{manager}>, your employee <@{designated_answerer_id}> is slacking off!"
+        )
 
     # Calling you on escalation level 4
     elif escalation_level == 4:
@@ -72,24 +138,90 @@ def modify_post_by_escalation_level(question, escalation_level: int, tag: str = 
         phone_number = fetch_user_phone_number(slack_id=designated_answerer_id)
         call_phone_number(phone_number=phone_number)
 
-        post_text = (f"*I'M CALLING YOU!!!*\n🆘☎️🆘☎️🆘\n<@{designated_answerer_id}>, you have been summoned to answer "
-                     f"this `{tag}`question NOW!\n>{title}\n🔗 <{link}|PLEASEEEEE answer this!>")
+        blocks = generate_escalation_blocks(
+            header=f"☎️🆘☎️️️ I'M CALLING YOU!!! ️🆘☎️🆘☎",
+            title=title,
+            link=link,
+            link_text="PLEASEEEEE answer this!",
+            additional_text=f"<@{designated_answerer_id}>, I'm resorting to calling you because this `{tag}` question is still unanswered!"
+        )
 
     # Giving up and sending a sad message
     else:
-        post_text = (f"*I give up...*\n💔💔💔\nMarking <{link}|this `{tag}` question> as 'won't answer' because no one "
-                     f"seems to care.")
+        blocks = generate_escalation_blocks(
+            header=f"Giving up on this question 💔",
+            title=title,
+            link=link,
+            link_text=f"Marking this `{tag}` question as 'won't answer' because no one seems to care.",
+            additional_text="Goodbye, Stack Overflow..."
+        )
         set_question_as_wont_answer(id=question["qid"])
 
-    return post_text
+    return blocks
 
 
 def congratulate_user(slack_id: str):
-    post_text = (f"🎉🎉🎉🎉🎉🎉🎉🎉🎉\nCongratulations <@{slack_id}>! 🥳\nYou got a point for answering "
-                 f"a StackOverflow question. Thank you for your contribution!\n🎉🎉🎉🎉🎉🎉🎉🎉🎉")
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "🎉🎉🎉 CONGRATULATIONS 🎉🎉🎉"
+            }
+        },
+        {
+            "type": "divider"
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"Congratulations <@{slack_id}>! 🥳\nYou got a point for answering a StackOverflow question. "
+                        f"Thank you for your contribution!"
+            }
+        }
+    ]
 
     try:
-        client.chat_postMessage(channel=CHANNEL_ID, text=post_text)
+        client.chat_postMessage(channel=CHANNEL_ID, blocks=blocks)
     except SlackApiError as e:
         log.error("Slack error:", e.response["error"])
 
+
+def post_leaderboard(sorted_leaderboard: list[tuple], date: str):
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"🏆🏆🏆 {date} LEADERBOARD 🏆🏆🏆"
+            }
+        },
+        {
+            "type": "divider"
+        }
+    ]
+
+    emojis = ["🥇", "🥈", "🥉"]
+    for i in range(len(emojis)):
+        try:
+            current = sorted_leaderboard[i]
+            text = f"{emojis[i]} <@{current[0]}> with {current[1]} points"
+        except IndexError:
+            text = f"{emojis[i]}❌ No one else has answered questions yet 😭"
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": text
+            }
+        })
+
+    try:
+        client.chat_postMessage(
+            channel=CHANNEL_ID,
+            blocks=blocks
+        )
+    except SlackApiError as e:
+        log.error("Slack error:", e.response["error"])

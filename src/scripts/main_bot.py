@@ -1,23 +1,27 @@
 import time
 import schedule
 
-from src.db.points import increment_points
+from src.db.points import increment_points, fetch_points_per_user_per_month
 from src.db.questions import insert_question, select_unanswered_question_ids, mark_question_as_answered, \
     increment_escalation_level, select_question
-from src.db.users import fetch_all_user_so_ids
-from src.slack.slack import post_question_to_slack, congratulate_user
+from src.db.users import fetch_all_user_so_ids, fetch_all_user_slack_ids
+from src.slack.slack import post_question_to_slack, congratulate_user, post_leaderboard
 from src.stack_overflow.so import fetch_question, fetch_owner_ids_from_responses, fetch_answers_for_question
 
 
 def fetch_and_post_question():
-    question, tag = fetch_question()
+    unanswered_questions = select_unanswered_question_ids()
 
-    timestamp = int(time.time())
-    id, title, link = question["question_id"], question["title"], question["link"]
+    # If there are no unanswered questions, fetch a new question
+    if not unanswered_questions:
+        question, tag = fetch_question()
 
-    insert_question(id=id, title=title, link=link, timestamp=timestamp, tag=tag)
+        timestamp = int(time.time())
+        id, title, link = question["question_id"], question["title"], question["link"]
 
-    post_question_to_slack(question, tag=tag)
+        insert_question(id=id, title=title, link=link, timestamp=timestamp, tag=tag)
+
+        post_question_to_slack(question, tag=tag)
 
 def escalate(qid: int):
     question = select_question(id=qid)
@@ -56,14 +60,34 @@ def check_for_responses():
             # If the question is still unanswered, escalate it
             escalate(qid=question_id)
 
+def display_leaderboard():
+    all_user_slack_ids = fetch_all_user_slack_ids()
+
+    current_year = time.localtime().tm_year
+    current_month = time.localtime().tm_mon
+    month_name = time.strftime("%B", time.localtime())
+
+    leaderboard = {}
+
+    for user_id in all_user_slack_ids:
+        points = fetch_points_per_user_per_month(
+            slack_id=user_id,
+            year=current_year,
+            month=current_month
+        )
+        leaderboard[user_id] = points
+
+    sorted_leaderboard = sorted(leaderboard.items(), key=lambda item: item[1], reverse=True)
+    post_leaderboard(sorted_leaderboard=sorted_leaderboard, date=f"{month_name} {current_year}")
 
 
-fetch_and_post_question()
-check_for_responses()
+if __name__ == "__main__":
+    fetch_and_post_question()
+    schedule.every(10).minutes.do(fetch_and_post_question)
 
-# schedule.every(5).minutes.do(fetch_and_post_question)
-#
-# while True:
-#     schedule.run_pending()
-#     time.sleep(60)
-#
+    schedule.every(15).seconds.do(check_for_responses)
+    schedule.every().day.at("01:50").do(display_leaderboard)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)

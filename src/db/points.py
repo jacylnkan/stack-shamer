@@ -29,3 +29,16 @@ def increment_points(slack_id: str, year: int, month: int):
 
     connection.commit()
 
+
+def fetch_points_per_user_per_month(slack_id: str, year: int, month: int):
+    """Fetches the points for a user for a specific month."""
+    connection, cursor = connect_to_database()
+    select_cmd = """SELECT points FROM points 
+                    WHERE slack_id = ? AND year = ? AND month = ?"""
+    cursor.execute(select_cmd, (slack_id, year, month))
+    result = cursor.fetchone()
+
+    if result:
+        return result[0]
+    else:
+        return 0  # Return 0 if no points found for the user in that month

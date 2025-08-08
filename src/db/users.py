@@ -79,3 +79,16 @@ def fetch_user_phone_number(slack_id: str) -> str:
         raise ValueError(f"No user found with Slack ID '{slack_id}'.")
 
     return result[0]
+
+
+def fetch_all_user_slack_ids():
+    """Fetches all Slack user IDs from the users table."""
+    connection, cursor = connect_to_database()
+    select_cmd = "SELECT slack_id FROM users"
+    cursor.execute(select_cmd)
+    results = cursor.fetchall()
+
+    if not results:
+        raise ValueError("No users found in the database.")
+
+    return [row[0] for row in results]  # Return a list of Slack IDs

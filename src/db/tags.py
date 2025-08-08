@@ -4,7 +4,7 @@ from src.db.db import connect_to_database
 def create_tags_table():
     """Creates the tags table in the database if it does not exist."""
     connection, cursor = connect_to_database()
-    create_table_cmd = """CREATE TABLE IF NOT EXISTS tags(id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL)"""
+    create_table_cmd = """CREATE TABLE IF NOT EXISTS tags(tag TEXT PRIMARY KEY)"""
     cursor.execute(create_table_cmd)
 
     connection.commit()

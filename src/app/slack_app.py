@@ -1,3 +1,5 @@
+import re
+
 from fastapi import FastAPI, Form
 import uvicorn
 
@@ -38,16 +40,27 @@ def add_tag(text: str = Form(...)):
 
 @app.post("/add_user")
 def add_user(text: str = Form(...), user_id: str = Form(...)):
-    so_username = text.strip()
     slack_id = user_id.strip()
 
-    # Get SO user ID
-    user_id = fetch_user_id_from_username(username=so_username)
+    info = text.strip()
+    matches = re.findall(r'(\w+):\s*(\S+)', info)
 
-    insert_user(slack_id=slack_id, so_id=user_id)
+    required_keys = {"so_username", "manager", "ph"}
+    parsed_data = {key: value.strip('"') for key, value in matches}
+    missing = required_keys - parsed_data.keys()
+    if missing:
+        return {
+            "response_type": "ephemeral",
+            "text": f"Missing required fields: {', '.join(missing)}. Please try again.",
+        }
+
+    # Get SO user ID
+    user_id = fetch_user_id_from_username(username=parsed_data["so_username"])
+
+    insert_user(slack_id=slack_id, so_id=user_id, manager_id=parsed_data["manager"], ph=parsed_data["ph"])
     return {
         "response_type": "in_channel",
-        "text": f"User `{so_username}` has been added successfully! You will now be forced to answer Stack Overflow questions forever.",
+        "text": f"User `{parsed_data['so_username']}` has been added successfully! You will now be forced to answer Stack Overflow questions forever.",
     }
 
 
@@ -55,4 +68,4 @@ if __name__ == "__main__":
     # Create all DB tables
     create_all_tables()
 
-    uvicorn.run("app:app", host="0.0.0.0", port=8080, reload=True)
+    uvicorn.run("slack_app:app", host="0.0.0.0", port=8080, reload=True)
